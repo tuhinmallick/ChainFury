@@ -27,27 +27,26 @@ Base = declarative_base()
 
 ID_LENGTH = 8
 
-db = Env.CFS_DATABASE("")
-if not db:
-    # create a sqlite in the chainfury directory
-    cf_folder = os.path.expanduser("~/cf")
-    os.makedirs(cf_folder, exist_ok=True)
-    db = "sqlite:///" + cf_folder + "/cfs.db"
-    logger.warning(f"No database passed will connect to local SQLite: {db}")
-    engine = create_engine(
-        db,
-        connect_args={
-            "check_same_thread": False,
-        },
-    )
-else:
-    logger.info(f"Using via database URL")
+if db := Env.CFS_DATABASE(""):
+    logger.info("Using via database URL")
     engine = create_engine(
         db,
         poolclass=QueuePool,
         pool_size=10,
         pool_recycle=30,
         pool_pre_ping=True,
+    )
+else:
+    # create a sqlite in the chainfury directory
+    cf_folder = os.path.expanduser("~/cf")
+    os.makedirs(cf_folder, exist_ok=True)
+    db = f"sqlite:///{cf_folder}/cfs.db"
+    logger.warning(f"No database passed will connect to local SQLite: {db}")
+    engine = create_engine(
+        db,
+        connect_args={
+            "check_same_thread": False,
+        },
     )
 
 
@@ -60,21 +59,18 @@ else:
 
 def get_random_alphanumeric_string(length) -> str:
     letters_and_digits = string.ascii_letters + string.digits
-    result_str = "".join((random.choice(letters_and_digits) for i in range(length)))
-    return result_str
+    return "".join(random.choice(letters_and_digits) for _ in range(length))
 
 
 def get_random_number(length) -> int:
     smallest_number = 10 ** (length - 1)
     largest_number = (10**length) - 1
-    random_numbers = random.randint(smallest_number, largest_number)
-    return random_numbers
+    return random.randint(smallest_number, largest_number)
 
 
 def get_local_session() -> sessionmaker:
     logger.debug("Database opened successfully")
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    return SessionLocal
+    return sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def db_session() -> Session:  # type: ignore
@@ -138,8 +134,11 @@ def add_default_templates():
         with open(joinp(ex_folder, "index.json")) as f:
             data = json.load(f)
         for template_data in data:
-            template = db.query(Template).filter_by(id=template_data["id"]).first()
-            if template:
+            if (
+                template := db.query(Template)
+                .filter_by(id=template_data["id"])
+                .first()
+            ):
                 template.name = template_data["name"]
                 template.description = template_data["description"]
                 # with open("./examples/" + template_data["dag"]) as f:

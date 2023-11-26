@@ -70,8 +70,7 @@ def store_blob(key: str, value: bytes, engine: str = "", bucket: str = "") -> st
         key = CFEnv.CF_BLOB_PREFIX() + key
         logger.info(f"Storing {key} in {bucket_name}")
         s3.put_object(Bucket=bucket_name, Key=key, Body=value)
-        aws_cfurl = CFEnv.CF_BLOB_AWS_CLOUD_FRONT()
-        if aws_cfurl:
+        if aws_cfurl := CFEnv.CF_BLOB_AWS_CLOUD_FRONT():
             res = aws_cfurl + quote(key)
         else:
             res = f"https://{bucket_name}.s3.amazonaws.com/{key}"
@@ -188,8 +187,7 @@ def exponential_backoff(
 
     if not max_retries:
         try:
-            out = foo(*args, **kwargs)  # Call the function that may crash
-            return out  # If successful, break out of the loop and return
+            return foo(*args, **kwargs)
         except DoNotRetryException as e:
             raise e
         except UnAuthException as e:
@@ -200,8 +198,7 @@ def exponential_backoff(
 
     for attempt in range(max_retries):
         try:
-            out = foo(*args, **kwargs)  # Call the function that may crash
-            return out  # If successful, break out of the loop and return
+            return foo(*args, **kwargs)
         except DoNotRetryException as e:
             raise e
         except UnAuthException as e:
@@ -382,11 +379,10 @@ def from_json(fp: str = "") -> Dict[str, Any]:
     Returns:
 
     """
-    if os.path.exists(fp):
-        with open(fp, "r") as f:
-            return json.load(f)
-    else:
+    if not os.path.exists(fp):
         return json.loads(fp)
+    with open(fp, "r") as f:
+        return json.load(f)
 
 
 """
@@ -417,9 +413,9 @@ class SimplerTimes:
         """Get the current datetime in UTC timezone as a string"""
         return SimplerTimes.get_now_datetime().strftime("%Y-%m-%d %H:%M:%S.%f")
 
-    def i64_to_datetime(i64: int) -> datetime:  # type: ignore
+    def i64_to_datetime(self) -> datetime:    # type: ignore
         """Convert an int to datetime in UTC timezone"""
-        return datetime.fromtimestamp(i64, SimplerTimes.tz)
+        return datetime.fromtimestamp(self, SimplerTimes.tz)
 
     def get_now_human() -> str:  # type: ignore
         """Get the current datetime in UTC timezone as a human readable string"""

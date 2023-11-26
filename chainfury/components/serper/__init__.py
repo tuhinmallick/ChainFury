@@ -169,7 +169,7 @@ def serper_api(
 
     def _fn():
         r = requests.post(
-            f"https://google.serper.dev/search",
+            "https://google.serper.dev/search",
             headers={
                 "X-API-KEY": serper_api_key,
                 "Content-Type": "application/json",

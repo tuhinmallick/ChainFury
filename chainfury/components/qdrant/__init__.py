@@ -208,7 +208,7 @@ def qdrant_read(
         raise Exception("Embeddings should be a list of lists of floats")
     if batch_search:
         raise NotImplementedError("Batch search is not implemented yet")
-    if not batch_search and len(embeddings) > 1:
+    if len(embeddings) > 1:
         raise Exception("Batch search is not enabled, but multiple embeddings are passed")
     if not top and not limit:
         raise Exception("Either top or limit should be set")
@@ -221,19 +221,7 @@ def qdrant_read(
     if qdrant_search_exact:
         search_params.exact = qdrant_search_exact
 
-    if batch_search:
-        # this is not implemented, this fails when we try to pass a list of vectors
-        search_queries = [models.SearchRequest(vector=x, limit=limit, offset=offset, params=search_params) for x in embeddings]
-        out = client.search_batch(
-            collection_name=collection_name,
-            requests=search_queries,
-        )
-        res = [[_x.dict(skip_defaults=False) for _x in x] for x in out]  # type: ignore
-
-    query_filter = None
-    if filters:
-        query_filter = models.Filter(**filters)  # type: ignore
-
+    query_filter = models.Filter(**filters) if filters else None
     out = client.search(
         collection_name=collection_name,
         query_vector=embeddings[0],

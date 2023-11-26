@@ -50,9 +50,7 @@ def create_chain(
     db.commit()
     db.refresh(chatbot)
 
-    # return
-    response = T.ApiChain(**chatbot.to_dict())
-    return response
+    return T.ApiChain(**chatbot.to_dict())
 
 
 def get_chain(
@@ -70,7 +68,7 @@ def get_chain(
     filters = [
         DB.ChatBot.id == id,
         DB.ChatBot.created_by == user.id,
-        DB.ChatBot.deleted_at == None,
+        DB.ChatBot.deleted_at is None,
     ]
     if tag_id:
         filters.append(DB.ChatBot.tag_id == tag_id)
@@ -110,7 +108,7 @@ def update_chain(
     filters = [
         DB.ChatBot.id == id,
         DB.ChatBot.created_by == user.id,
-        DB.ChatBot.deleted_at == None,
+        DB.ChatBot.deleted_at is None,
     ]
     if tag_id:
         filters.append(DB.ChatBot.tag_id == tag_id)
@@ -120,12 +118,12 @@ def update_chain(
         return T.ApiResponse(message="ChatBot not found")
 
     for field in unq_keys:
-        if field == "name":
-            chatbot.name = chatbot_data.name  # type: ignore
+        if field == "dag":
+            chatbot.dag = chatbot_data.dag.dict()  # type: ignore
         elif field == "description":
             chatbot.description = chatbot_data.description  # type: ignore
-        elif field == "dag":
-            chatbot.dag = chatbot_data.dag.dict()  # type: ignore
+        elif field == "name":
+            chatbot.name = chatbot_data.name  # type: ignore
     db.commit()
     db.refresh(chatbot)
 
@@ -148,7 +146,7 @@ def delete_chain(
     filters = [
         DB.ChatBot.id == id,
         DB.ChatBot.created_by == user.id,
-        DB.ChatBot.deleted_at == None,
+        DB.ChatBot.deleted_at is None,
     ]
     if tag_id:
         filters.append(DB.ChatBot.tag_id == tag_id)
@@ -176,10 +174,7 @@ def list_chains(
     user = DB.get_user_from_jwt(token=token, db=db)
 
     # DB Call
-    filters = [
-        DB.ChatBot.created_by == user.id,
-        DB.ChatBot.deleted_at == None,
-    ]
+    filters = [DB.ChatBot.created_by == user.id, DB.ChatBot.deleted_at is None]
     if tag_id:
         filters.append(DB.ChatBot.tag_id == tag_id)
     chatbots: List[DB.ChatBot] = db.query(DB.ChatBot).filter(*filters).offset(skip).limit(limit).all()  # type: ignore
@@ -225,7 +220,7 @@ def run_chain(
     filters = [
         DB.ChatBot.id == id,
         DB.ChatBot.created_by == user.id,
-        DB.ChatBot.deleted_at == None,
+        DB.ChatBot.deleted_at is None,
     ]
     chatbot = db.query(DB.ChatBot).filter(*filters).first()  # type: ignore
     if not chatbot:
@@ -309,6 +304,6 @@ def get_chain_metrics(
     )
     latency_per_hour = []
     for item in hourly_average_latency:
-        created_datetime = item[0] + "00:00"
+        created_datetime = f"{item[0]}00:00"
         latency_per_hour.append({"created_at": created_datetime, "time": item[1]})
     return {"metrics": metrics, "latencies": latency_per_hour}

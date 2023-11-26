@@ -22,7 +22,7 @@ def list_prompts(
     # get prompts
     if limit < 1 or limit > 100:
         limit = 100
-    offset = offset if offset > 0 else 0
+    offset = max(offset, 0)
     prompts = (
         db.query(DB.Prompt)  # type: ignore
         .filter(DB.Prompt.chatbot_id == chain_id)
@@ -42,12 +42,10 @@ def get_prompt(
     # validate user
     user = DB.get_user_from_jwt(token=token, db=db)
 
-    # get prompt
-    prompt: DB.Prompt = db.query(DB.Prompt).filter(DB.Prompt.id == prompt_id).first()  # type: ignore
-    if not prompt:
+    if prompt := db.query(DB.Prompt).filter(DB.Prompt.id == prompt_id).first():
+        return {"prompt": prompt.to_dict()}
+    else:
         raise HTTPException(status_code=404, detail="Prompt not found")
-
-    return {"prompt": prompt.to_dict()}
 
 
 def delete_prompt(
@@ -79,17 +77,12 @@ def prompt_feedback(
 
     # store in the DB
     prompt: DB.Prompt = db.query(DB.Prompt).filter(DB.Prompt.id == prompt_id).first()  # type: ignore
-    if prompt is not None:
-        if prompt.user_rating is not None:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Chatbot user rating already exists",
-            )
-        prompt.user_rating = DB.PromptRating(inputs.score)
-        db.commit()
-    else:
+    if prompt is None:
+        raise HTTPException(status_code=404, detail="Unable to find the prompt")
+    if prompt.user_rating is not None:
         raise HTTPException(
-            status_code=404,
-            detail=f"Unable to find the prompt",
+            status_code=400, detail="Chatbot user rating already exists"
         )
+    prompt.user_rating = DB.PromptRating(inputs.score)
+    db.commit()
     return {"rating": prompt.user_rating}

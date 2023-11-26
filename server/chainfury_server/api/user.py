@@ -17,43 +17,36 @@ def login(auth: T.ApiAuth, db: Session = Depends(DB.fastapi_db_session)):
             payload=DB.JWTPayload(username=auth.username, user_id=user.id).to_dict(),
             key=Env.JWT_SECRET(),
         )
-        response = {"msg": "success", "token": token}
+        return {"msg": "success", "token": token}
     else:
-        response = {"msg": "failed"}
-    return response
+        return {"msg": "failed"}
 
 
 def sign_up(auth: T.ApiSignUp, db: Session = Depends(DB.fastapi_db_session)):
-    user_exists = False
-    email_exists = False
     user: DB.User = db.query(DB.User).filter(DB.User.username == auth.username).first()  # type: ignore
-    if user is not None:
-        user_exists = True
+    user_exists = user is not None
     user: DB.User = db.query(DB.User).filter(DB.User.email == auth.email).first()  # type: ignore
-    if user is not None:
-        email_exists = True
+    email_exists = user is not None
     if user_exists and email_exists:
         raise HTTPException(status_code=400, detail="Username and email already registered")
     elif user_exists:
         raise HTTPException(status_code=400, detail="Username is taken")
     elif email_exists:
         raise HTTPException(status_code=400, detail="Email already registered")
-    if not user_exists and not email_exists:  # type: ignore
-        user = DB.User(
-            username=auth.username,
-            email=auth.email,
-            password=sha256_crypt.hash(auth.password),
-        )  # type: ignore
-        db.add(user)
-        db.commit()
-        token = jwt.encode(
-            payload=DB.JWTPayload(username=auth.username, user_id=user.id).to_dict(),
-            key=Env.JWT_SECRET(),
-        )
-        response = {"msg": "success", "token": token}
-    else:
-        response = {"msg": "failed"}
-    return response
+    if user_exists or email_exists:
+        return {"msg": "failed"}
+    user = DB.User(
+        username=auth.username,
+        email=auth.email,
+        password=sha256_crypt.hash(auth.password),
+    )  # type: ignore
+    db.add(user)
+    db.commit()
+    token = jwt.encode(
+        payload=DB.JWTPayload(username=auth.username, user_id=user.id).to_dict(),
+        key=Env.JWT_SECRET(),
+    )
+    return {"msg": "success", "token": token}
 
 
 def change_password(

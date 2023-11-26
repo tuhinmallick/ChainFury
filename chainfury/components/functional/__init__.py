@@ -202,9 +202,7 @@ def json_translator(
     out = {}
     for k, v in resolver.items():
         if isinstance(v, dict):
-            _temp = {}
-            for k1, v1 in v.items():
-                _temp[k1] = get_value_by_keys(data, v1)
+            _temp = {k1: get_value_by_keys(data, v1) for k1, v1 in v.items()}
             out[k] = _temp
         else:
             out[k] = get_value_by_keys(data, v)
