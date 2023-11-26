@@ -137,7 +137,7 @@ class ProgramaticActionsRegistry:
     ) -> Node:
         node_id = node_id or str(uuid4())
         ops = func_to_return_vars(func=fn, returns=outputs)
-        node = Node(
+        return Node(
             id=node_id,
             type=Node.types.PROGRAMATIC,
             fn=fn,
@@ -146,7 +146,6 @@ class ProgramaticActionsRegistry:
             outputs=ops,
             tags=tags,
         )
-        return node
 
     def register(
         self,
@@ -273,7 +272,7 @@ class AIAction:
     def __init__(self, node_id: str, model: Model, model_params: Dict[str, Any], fn: object, action_name: str):
         # do some basic checks that we can do before anything else like checking if model_params
         # is a subset of the model.vars
-        fields = set(x.name for x in model.vars)
+        fields = {x.name for x in model.vars}
         mp_set = set(model_params.keys())
         if not mp_set.issubset(fields):
             raise Exception(f"Model params {mp_set} not a subset of {fields}")
@@ -288,11 +287,11 @@ class AIAction:
             fields_with_locations = extract_jinja_indices(fn)
             for field in fields_with_locations:
                 fields.extend(field[1])
-                obj = get_value_by_keys(fn, field[0])
-                if not obj:
-                    raise ValueError(f"Field {field[0]} not found in {fn}, but was extraced. There is a bug in get_value_by_keys function")
-                templates.append((obj, jinja2.Template(obj), field[0]))
+                if obj := get_value_by_keys(fn, field[0]):
+                    templates.append((obj, jinja2.Template(obj), field[0]))
 
+                else:
+                    raise ValueError(f"Field {field[0]} not found in {fn}, but was extraced. There is a bug in get_value_by_keys function")
             # set values
             self.templates = templates
         else:
@@ -353,7 +352,7 @@ class AIAction:
         if self.action_source == AIAction.FUNC:
             try:
                 fn_out = self.fn(**_data)  # type: ignore
-                if self.action_source == AIAction.FUNC and not type(fn_out) == dict:
+                if self.action_source == AIAction.FUNC and type(fn_out) != dict:
                     raise Exception(f"AI Action preprocessor for {self.node_id} did not return a dict but {type(fn_out)}")
             except Exception as e:
                 return "", e
@@ -369,10 +368,7 @@ class AIAction:
         model_final_params.update(data)
         model_final_params.update(fn_out)  # type: ignore
         out, err = self.model(model_final_params)
-        if err != None:
-            return "", err
-
-        return out, err
+        return ("", err) if err != None else (out, err)
 
 
 class AIActionsRegistry:
@@ -428,7 +424,7 @@ class AIActionsRegistry:
             output_field = func_to_return_vars(func=ai_action.__call__, returns={"model_output": (0,)})
         else:
             output_field = [Var(type="string", name=k, loc=loc) for k, loc in outputs.items()]
-        node = Node(
+        return Node(
             id=node_id,
             fn=ai_action,
             type=Node.types.AI,
@@ -436,7 +432,6 @@ class AIActionsRegistry:
             fields=ai_action.fields + model.vars,
             outputs=output_field,
         )
-        return node
 
     def register(
         self,
@@ -482,11 +477,7 @@ class AIActionsRegistry:
         )
 
         # this node can be registered in DB
-        if node_id == AIActionsRegistry.DB_REGISTER:
-            pass
-
-        # this is just the server instance register
-        else:
+        if node_id != AIActionsRegistry.DB_REGISTER:
             self.nodes[node_id] = node
             for tag in tags:
                 self.tags_to_nodes[tag] = self.tags_to_nodes.get(tag, []) + [node_id]
@@ -655,8 +646,9 @@ class Memory:
 
         model_data = {**model_fields.get("embedding_model_params", {})}
         model_id = model_fields.pop("embedding_model")
-        embedding_model_default_config = DEFAULT_MEMORY_CONSTANTS.get(model_id, {})
-        if embedding_model_default_config:
+        if embedding_model_default_config := DEFAULT_MEMORY_CONSTANTS.get(
+            model_id, {}
+        ):
             model_data = {**embedding_model_default_config.get("embedding_model_params", {}), **model_data}
             model_key = embedding_model_default_config.get("embedding_model_key", "items") or model_data.get("embedding_model_key")
             model_fields["translation_layer"] = model_fields.get("translation_layer") or embedding_model_default_config.get(
@@ -664,7 +656,7 @@ class Memory:
             )
         else:
             req_keys = [x.name for x in self.fields_model[2:]]
-            if not all([x in model_fields for x in req_keys]):
+            if any(x not in model_fields for x in req_keys):
                 raise Exception(f"Model {model_id} requires {req_keys} to be passed")
             model_key = model_fields.get("embedding_model_key")
             model_data = {**model_fields.get("embedding_model_params", {}), **model_data}
@@ -676,15 +668,14 @@ class Memory:
             logger.error(f"traceback: {embeddings}")
             raise err
 
-        # now that we have all the embeddings ready we now need to translate it to be fed into the DB function
-        translated_data = {}
-        for k, v in model_fields.get("translation_layer", {}).items():
-            translated_data[k] = get_value_by_keys(embeddings, v)
-
+        translated_data = {
+            k: get_value_by_keys(embeddings, v)
+            for k, v in model_fields.get("translation_layer", {}).items()
+        }
         # create the dictionary to call the underlying function
         db_data = {}
         for f in self.fields_fn:
-            if f.required and not (f.name in data or f.name in translated_data):
+            if f.required and f.name not in data and f.name not in translated_data:
                 raise Exception(f"Field '{f.name}' is required in {self.node_id} but not present")
             if f.name in data:
                 db_data[f.name] = data.pop(f.name)
@@ -747,13 +738,13 @@ class MemoryRegistry:
         return node
 
     def get_write(self, node_id: str) -> Optional[Node]:
-        out = self._memories.get(node_id + "-write", None)
+        out = self._memories.get(f"{node_id}-write", None)
         if out is None:
             raise ValueError(f"Memory '{node_id}' not found")
         return out
 
     def get_read(self, node_id: str) -> Optional[Node]:
-        out = self._memories.get(node_id + "-read", None)
+        out = self._memories.get(f"{node_id}-read", None)
         if out is None:
             raise ValueError(f"Memory '{node_id}' not found")
         return out

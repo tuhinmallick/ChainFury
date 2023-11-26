@@ -35,7 +35,7 @@ def _main(
         importlib.import_module(mod)
 
     # Here you go ...
-    uvicorn.run(app, host=host, port=int(port))
+    uvicorn.run(app, host=host, port=port)
 
 
 def main():

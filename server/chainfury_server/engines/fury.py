@@ -98,13 +98,10 @@ class FuryEngine(EngineInterface):
             # full_ir = {}
             mainline_out = ""
             for ir, done in iterator:
-                if not done:
-                    # full_ir.update(ir)
-                    yield ir, False
-                else:
+                if done:
                     mainline_out = ir
-                    yield ir, False
-
+                # full_ir.update(ir)
+                yield ir, False
             result = T.CFPromptResult(
                 result=str(mainline_out),
                 prompt_id=prompt_row.id,  # type: ignore

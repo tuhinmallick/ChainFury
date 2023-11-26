@@ -315,10 +315,7 @@ class TreeOfThought:
 
             # quanify the feedback
             out = re.findall(r"rating: ([0-9]+)", feedback)  # type: ignore
-            if not out:
-                rating = 0
-            else:
-                rating = int(out[0])
+            rating = 0 if not out else int(out[0])
             print("RATING:", rating)
 
             # just tree-search things

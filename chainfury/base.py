@@ -138,7 +138,7 @@ class Var:
             Var.from_dict(additional_properties_val) if isinstance(additional_properties_val, dict) else additional_properties_val
         )
 
-        var = cls(
+        return cls(
             type=type_val,  # type: ignore
             format=format_val,
             items=items_val,
@@ -150,7 +150,6 @@ class Var:
             name=name_val,
             loc=loc_val,
         )
-        return var
 
     def set_value(self, v: Any):
         """Set the value of this Var.
@@ -189,7 +188,7 @@ def pyannotation_to_json_schema(
 
         if x == str:
             return Var(type="string")
-        elif x == int or x == float:
+        elif x in [int, float]:
             return Var(type="number")
         elif x == bool:
             return Var(type="boolean")
@@ -200,7 +199,6 @@ def pyannotation_to_json_schema(
         elif x == dict:
             return Var(type="object", additionalProperties=Var(type="string"))
 
-        # there are some types that are unique to the fury system
         elif x == Secret:
             return Var(type="string", password=True)
         elif x == Model:
@@ -229,17 +227,16 @@ def pyannotation_to_json_schema(
                 items=[pyannotation_to_json_schema(x=x.__args__[0], allow_any=allow_any, allow_exc=allow_exc, allow_none=allow_none)],
             )
         elif x.__origin__ == dict:
-            if len(x.__args__) == 2 and x.__args__[0] == str:
-                if trace:
-                    logger.debug("t2.2")
-                return Var(
-                    type="object",
-                    additionalProperties=pyannotation_to_json_schema(
-                        x=x.__args__[1], allow_any=allow_any, allow_exc=allow_exc, allow_none=allow_none
-                    ),
-                )
-            else:
+            if len(x.__args__) != 2 or x.__args__[0] != str:
                 raise ValueError(f"i2: Unsupported type: {x}")
+            if trace:
+                logger.debug("t2.2")
+            return Var(
+                type="object",
+                additionalProperties=pyannotation_to_json_schema(
+                    x=x.__args__[1], allow_any=allow_any, allow_exc=allow_exc, allow_none=allow_none
+                ),
+            )
         elif x.__origin__ == tuple:
             if trace:
                 logger.debug("t2.3")
@@ -372,7 +369,7 @@ def jinja_schema_to_vars(v) -> Var:
     Returns:
         Var: The Var object.
     """
-    if type(v) == j2sm.Scalar or type(v) == j2sm.String:
+    if type(v) in [j2sm.Scalar, j2sm.String]:
         field = Var(type="string", required=True)
     elif type(v) == j2sm.Number:
         field = Var(type="number", required=True)
@@ -462,8 +459,7 @@ def extract_jinja_indices(data: Union[str, List, Dict[str, Any]], current_index=
         indices = []
 
     if isinstance(data, str):
-        fields = jtype_to_vars(data)
-        if fields:
+        if fields := jtype_to_vars(data):
             indices.append((current_index, fields))
     elif isinstance(data, list):
         for i, item in enumerate(data):
@@ -523,9 +519,9 @@ def get_value_by_keys(obj, keys, *, _first_sentinal: bool = False) -> Any:
             key = int(key)
         except ValueError:
             raise ValueError(f"gvk2: Cannot use key '{key}' on a list")
-        if not type(key) == int:
+        if type(key) != int:
             raise ValueError(f"gvk3: Cannot use key '{key}' on a list")
-        key = int(key)
+        key = key
         if isinstance(key, int) and 0 <= key < len(obj):
             return get_value_by_keys(obj[key], keys[1:], _first_sentinal=True)
     elif type(obj) in [str, int, float, bool, type(None)]:
@@ -551,15 +547,14 @@ def put_value_by_keys(obj, keys, value: Any):
             obj[key] = value
         elif isinstance(obj, list) and isinstance(key, int) and 0 <= key < len(obj):
             obj[key] = value
-    else:
-        if isinstance(obj, dict):
-            if key not in obj or not isinstance(obj[key], (dict, list)):
-                obj[key] = {} if isinstance(keys[1], str) else []
-            put_value_by_keys(obj[key], keys[1:], value)
-        elif isinstance(obj, list) and isinstance(key, int) and 0 <= key < len(obj):
-            if not isinstance(obj[key], (dict, list)):
-                obj[key] = {} if isinstance(keys[1], str) else []
-            put_value_by_keys(obj[key], keys[1:], value)
+    elif isinstance(obj, dict):
+        if key not in obj or not isinstance(obj[key], (dict, list)):
+            obj[key] = {} if isinstance(keys[1], str) else []
+        put_value_by_keys(obj[key], keys[1:], value)
+    elif isinstance(obj, list) and isinstance(key, int) and 0 <= key < len(obj):
+        if not isinstance(obj[key], (dict, list)):
+            obj[key] = {} if isinstance(keys[1], str) else []
+        put_value_by_keys(obj[key], keys[1:], value)
 
 
 #
@@ -715,7 +710,7 @@ class Node:
         Returns:
             bool: True if the node has the field, False otherwise.
         """
-        return any([x.name == field for x in self.fields])
+        return any(x.name == field for x in self.fields)
 
     def to_dict(self) -> Dict[str, Any]:
         """Converts the node to a dictionary.
@@ -822,7 +817,7 @@ class Node:
             Tuple[Any, Optional[Exception]]: The result of the node and the exception if any.
         """
         data_keys = set(data.keys())
-        template_keys = set([x.name for x in self.fields])
+        template_keys = {x.name for x in self.fields}
         try:
             if not data_keys.issubset(template_keys):
                 raise ValueError(f"Invalid keys passed to node '{self.id}': {data_keys - template_keys}")
@@ -885,8 +880,7 @@ class Edge:
         self.target = f"{self.trg_node_id}/{self.trg_node_var}"
 
     def __repr__(self) -> str:
-        out = f"FuryEdge('{self.src_node_id}/{self.src_node_var}' => '{self.trg_node_id}/{self.trg_node_var}')"
-        return out
+        return f"FuryEdge('{self.src_node_id}/{self.src_node_var}' => '{self.trg_node_id}/{self.trg_node_var}')"
 
     def to_dict(self) -> Dict[str, Any]:
         """Serializes the edge to a dictionary.
@@ -948,7 +942,7 @@ class Chain:
         self.edges = edges
 
         if len(self.nodes) == 1:
-            assert len(self.edges) == 0, "Cannot have edges with only 1 node"
+            assert not self.edges, "Cannot have edges with only 1 node"
             self.topo_order = [next(iter(self.nodes))]
         else:
             self.topo_order = topological_sort(self.edges)
@@ -956,9 +950,9 @@ class Chain:
         self.main_in = main_in
 
         if "/" not in main_out:
-            if len(edges) > 0:
+            if edges:
                 edges_with_main_out_key = list(filter(lambda edge: edge.trg_node_var == main_out, edges))
-                if len(edges_with_main_out_key) == 0:
+                if not edges_with_main_out_key:
                     raise ValueError(f"c0: pass full main_out like xxx/yyy, could not find '{main_out}'")
                 elif len(edges_with_main_out_key) > 1:
                     raise ValueError(f"c1: pass full main_out like xxx/yyy, found multiple '{main_out}'")
@@ -966,11 +960,12 @@ class Chain:
                     main_out = edges_with_main_out_key[0].target
             else:
                 node = next(iter(self.nodes.values()))
-                outputs_with_op_name = list(filter(lambda output: output.name == main_out, node.outputs))
-                if len(outputs_with_op_name) == 0:
-                    raise ValueError(f"c2: Could not find output variable '{main_out}'")
-                else:
+                if outputs_with_op_name := list(
+                    filter(lambda output: output.name == main_out, node.outputs)
+                ):
                     main_out = f"{node.id}/{main_out}"
+                else:
+                    raise ValueError(f"c2: Could not find output variable '{main_out}'")
         self.main_out = main_out
 
         for node_id in self.topo_order:
@@ -1062,58 +1057,50 @@ class Chain:
         if not self.sample:
             raise ValueError("sample is required for converting to DAG")
 
-        # create a list of nodes
-        nodes = []
-        for i, node in enumerate(self.nodes.values()):
-            nodes.append(
-                T.FENode(
+        nodes = [
+            T.FENode(
+                id=node.id,
+                position=T.FENode.Position(
+                    x=i * 100,
+                    y=i * 100,
+                ),
+                type="FuryEngineNode",
+                width=100,
+                height=100,
+                selected=False,
+                position_absolute=T.FENode.Position(
+                    x=i * 100,
+                    y=i * 100,
+                ),
+                dragging=False,
+                cf_id=node.id,
+                cf_data=T.FENode.CFData(
                     id=node.id,
-                    position=T.FENode.Position(
-                        x=i * 100,
-                        y=i * 100,
-                    ),
-                    type="FuryEngineNode",
-                    width=100,
-                    height=100,
-                    selected=False,
-                    position_absolute=T.FENode.Position(
-                        x=i * 100,
-                        y=i * 100,
-                    ),
-                    dragging=False,
-                    cf_id=node.id,
-                    cf_data=T.FENode.CFData(
-                        id=node.id,
-                        type=node.type,
-                        node=node.to_dict(),
-                        value=None,
-                    ),
-                    data={},
-                )
+                    type=node.type,
+                    node=node.to_dict(),
+                    value=None,
+                ),
+                data={},
             )
-
-        # create a list of edges
-        edges = []
-        for e in self.edges:
-            edges.append(
-                T.Edge(
-                    id=f"{e.src_node_id}/{e.src_node_var}-{e.trg_node_id}/{e.trg_node_var}",
-                    source=e.src_node_id,
-                    sourceHandle=e.src_node_var,
-                    target=e.trg_node_id,
-                    targetHandle=e.trg_node_var,
-                )
+            for i, node in enumerate(self.nodes.values())
+        ]
+        edges = [
+            T.Edge(
+                id=f"{e.src_node_id}/{e.src_node_var}-{e.trg_node_id}/{e.trg_node_var}",
+                source=e.src_node_id,
+                sourceHandle=e.src_node_var,
+                target=e.trg_node_id,
+                targetHandle=e.trg_node_var,
             )
-
-        # return
-        out = T.Dag(
+            for e in self.edges
+        ]
+        return T.Dag(
             nodes=nodes,
             edges=edges,
             sample=self.sample,
             main_in=self.main_in,
             main_out=self.main_out,
         )
-        return out
 
     @classmethod
     def from_dag(cls, dag: T.Dag, check_server: bool = True):
@@ -1339,7 +1326,6 @@ class Chain:
             print(pformat(data))
 
         full_ir = {}
-        out = None
         for node_id in self.topo_order:
             yield_dict, full_ir = self.step(
                 node_id=node_id,
@@ -1349,9 +1335,7 @@ class Chain:
                 thoughts_callback=thoughts_callback,
             )
 
-        if self.main_out:
-            out = full_ir.get(self.main_out)["value"]  # type: ignore
-
+        out = full_ir.get(self.main_out)["value"] if self.main_out else None
         if print_thoughts:
             print(terminal_top_with_text("Chain Last"))
             print("Outputs:\n------")
@@ -1461,8 +1445,15 @@ def edge_array_to_adjacency_list(edges: List[Edge]):
 def adjacency_list_to_edge_map(adjacency_list) -> List[Edge]:
     edges = []
     for src, dsts in adjacency_list.items():
-        for dst in dsts:
-            edges.append(Edge(src_node_id=src, src_node_var="", trg_node_id=dst, trg_node_var=""))
+        edges.extend(
+            Edge(
+                src_node_id=src,
+                src_node_var="",
+                trg_node_id=dst,
+                trg_node_var="",
+            )
+            for dst in dsts
+        )
     return edges
 
 
